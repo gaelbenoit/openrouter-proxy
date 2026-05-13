@@ -31,6 +31,16 @@ The proxy follows a pipeline pattern where each request passes through sequentia
 npm install
 ```
 
+## Configuration
+
+Copy `.env.example` to `.env` and fill in your configuration:
+
+```bash
+cp .env.example .env
+```
+
+Then edit `.env` with your settings. Never commit your `.env` file to version control.
+
 ## Usage
 
 ```bash
