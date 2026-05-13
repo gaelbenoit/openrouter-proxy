@@ -1,0 +1,24 @@
+{
+  "name": "openrouter-proxy",
+  "version": "1.0.0",
+  "description": "OpenRouter Proxy for AI client compatibility",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "test": "jest",
+    "test:watch": "jest --watch"
+  },
+  "keywords": ["proxy", "openrouter", "ai"],
+  "author": "OpenRouter Proxy Contributors",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/jest": "^29.0.0",
+    "@types/node": "^18.0.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.0"
+  }
+}
