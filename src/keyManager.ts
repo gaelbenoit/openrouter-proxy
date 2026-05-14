@@ -17,7 +17,9 @@ export class KeyManager {
   }
 
   private initializeKeys(): void {
-    const filePath = path.join(__dirname, '..', 'keys.json');
+    // Allow overriding storage path via environment variable for testing
+    const storagePath = process.env.KEYS_STORAGE_PATH ?? path.join(__dirname, '..', 'keys.json');
+    const filePath = path.isAbsolute(storagePath) ? storagePath : path.join(process.cwd(), storagePath);
     let keysFromFile: KeyInfo[] = [];
 
     // Try to load existing keys from file
@@ -61,7 +63,9 @@ export class KeyManager {
   }
 
   private saveKeysToFile(): void {
-    const filePath = path.join(__dirname, '..', 'keys.json');
+    // Allow overriding storage path via environment variable for testing
+    const storagePath = process.env.KEYS_STORAGE_PATH ?? path.join(__dirname, '..', 'keys.json');
+    const filePath = path.isAbsolute(storagePath) ? storagePath : path.join(process.cwd(), storagePath);
     const keysArray = Array.from(this.keys.values());
     // Convert Date objects to ISO strings for JSON serialization
     const keysForSerialization = keysArray.map(keyInfo => ({

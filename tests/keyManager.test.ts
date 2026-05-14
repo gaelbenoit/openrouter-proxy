@@ -4,8 +4,12 @@ import { ProxyConfig } from '../src/types';
 describe('KeyManager', () => {
   let keyManager: KeyManager;
   let config: ProxyConfig;
+  const TEST_STORAGE_PATH = './test-keys.json';
 
   beforeEach(() => {
+    // Use a test-specific storage path to avoid interfering with the real keys.json
+    process.env.KEYS_STORAGE_PATH = TEST_STORAGE_PATH;
+
     config = {
       host: '127.0.0.1',
       port: 8899,
@@ -25,6 +29,18 @@ describe('KeyManager', () => {
     };
 
     keyManager = new KeyManager(config);
+  });
+
+  afterEach(() => {
+    // Clean up test storage file
+    const fs = require('fs');
+    const path = require('path');
+    const testFilePath = path.resolve(__dirname, '..', TEST_STORAGE_PATH);
+    if (fs.existsSync(testFilePath)) {
+      fs.unlinkSync(testFilePath);
+    }
+    // Clean up environment variable
+    delete process.env.KEYS_STORAGE_PATH;
   });
 
   it('should initialize keys correctly', () => {
