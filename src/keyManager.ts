@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { ProxyConfig, KeyInfo } from './types';
 
 export class KeyManager {
@@ -10,21 +12,67 @@ export class KeyManager {
     this.keys = new Map<string, KeyInfo>();
     this.lastUsedIndex = -1;
 
-    // Initialize keys from config
+    // Initialize keys from file or config
     this.initializeKeys();
   }
 
   private initializeKeys(): void {
+    const filePath = path.join(__dirname, '..', 'keys.json');
+    let keysFromFile: KeyInfo[] = [];
+
+    // Try to load existing keys from file
+    if (fs.existsSync(filePath)) {
+      try {
+        const data = fs.readFileSync(filePath, 'utf-8');
+        keysFromFile = JSON.parse(data);
+        // Convert array to Map for easy lookup and restore Date objects
+        for (const keyInfo of keysFromFile) {
+          // Convert string dates back to Date objects
+          const restoredKeyInfo: KeyInfo = {
+            ...keyInfo,
+            lastUsed: new Date(keyInfo.lastUsed),
+            lastFailure: keyInfo.lastFailure ? new Date(keyInfo.lastFailure) : null
+          };
+          this.keys.set(restoredKeyInfo.key, restoredKeyInfo);
+        }
+      } catch (error) {
+        console.error('Error loading keys.json, starting with empty key store:', error);
+        // Continue with empty keys, will be populated from config below
+      }
+    }
+
+    // Ensure all keys from config are present in the map
     for (const key of this.config.apiKeys) {
       if (!this.keys.has(key)) {
+        // New key not in file, add with default values
         this.keys.set(key, {
           key,
           isActive: true,
           failureCount: 0,
           lastUsed: new Date(0), // Far in the past
-          lastFailure: null
+          lastFailure: null,
+          description: '' // Empty description by default
         });
       }
+    }
+
+    // Save the updated keys back to file (adds new keys if any)
+    this.saveKeysToFile();
+  }
+
+  private saveKeysToFile(): void {
+    const filePath = path.join(__dirname, '..', 'keys.json');
+    const keysArray = Array.from(this.keys.values());
+    // Convert Date objects to ISO strings for JSON serialization
+    const keysForSerialization = keysArray.map(keyInfo => ({
+      ...keyInfo,
+      lastUsed: keyInfo.lastUsed.toISOString(),
+      lastFailure: keyInfo.lastFailure ? keyInfo.lastFailure.toISOString() : null
+    }));
+    try {
+      fs.writeFileSync(filePath, JSON.stringify(keysForSerialization, null, 2));
+    } catch (error) {
+      console.error('Error saving keys to file:', error);
     }
   }
 
@@ -50,6 +98,8 @@ export class KeyManager {
     if (keyInfo) {
       keyInfo.lastUsed = new Date();
       this.keys.set(key, keyInfo);
+      // Persist the change
+      this.saveKeysToFile();
     }
 
     return key;
@@ -65,6 +115,8 @@ export class KeyManager {
       // On successful requests: marks key as used recently
       keyInfo.lastUsed = new Date();
       this.keys.set(key, keyInfo);
+      // Persist the change
+      this.saveKeysToFile();
     }
   }
 
@@ -86,6 +138,8 @@ export class KeyManager {
       }
 
       this.keys.set(key, keyInfo);
+      // Persist the change
+      this.saveKeysToFile();
     }
   }
 
@@ -107,6 +161,8 @@ export class KeyManager {
       }
 
       this.keys.set(key, keyInfo);
+      // Persist the change
+      this.saveKeysToFile();
     }
   }
 
@@ -120,6 +176,8 @@ export class KeyManager {
       keyInfo.isActive = true;
       keyInfo.failureCount = 0; // Reset failure count on reactivation
       this.keys.set(key, keyInfo);
+      // Persist the change
+      this.saveKeysToFile();
     }
   }
 

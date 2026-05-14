@@ -30,4 +30,5 @@ export interface KeyInfo {
   failureCount: number;
   lastUsed: Date;
   lastFailure: Date | null;
+  description: string;
 }

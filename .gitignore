@@ -43,3 +43,4 @@ jest.config.js
 Thumbs.db
 .claude/
 docs/
+keys.json

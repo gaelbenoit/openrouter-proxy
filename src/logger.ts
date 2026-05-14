@@ -130,7 +130,7 @@ export class Logger {
 
   // Specialized loggers as mentioned in the spec
   request(message: string, meta: Record<string, any> = {}): void {
-    this.info(message, { context: 'REQUEST', ...meta });
+    this.debug(message, { context: 'REQUEST', ...meta });
   }
 
   errorLog(message: string, meta: Record<string, any> = {}): void {
