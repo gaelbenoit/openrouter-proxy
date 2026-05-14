@@ -77,6 +77,32 @@ export class KeyManager {
   }
 
   /**
+   * Gets a display-friendly representation of a key for logging
+   * @param key The API key
+   * @returns Description if available, otherwise abbreviated key format
+   */
+  getKeyDescription(key: string): string {
+    const keyInfo = this.keys.get(key);
+    if (keyInfo && keyInfo.description.trim() !== '') {
+      return keyInfo.description;
+    }
+
+    // If no description, return abbreviated format: 3 chars after last dash + 3 last chars
+    const lastDashIndex = key.lastIndexOf('-');
+    if (lastDashIndex !== -1 && lastDashIndex < key.length - 4) {
+      const afterDash = key.substring(lastDashIndex + 1);
+      if (afterDash.length >= 3) {
+        const firstPart = afterDash.substring(0, 3);
+        const lastPart = key.substring(key.length - 3);
+        return `${firstPart}...${lastPart}`;
+      }
+    }
+
+    // Fallback to last 4 characters if format doesn't match expectations
+    return `...${key.slice(-4)}`;
+  }
+
+  /**
    * Gets the next available key using least recently used strategy
    * @returns The key string to use for the next request
    */

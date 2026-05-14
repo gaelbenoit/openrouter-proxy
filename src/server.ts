@@ -144,13 +144,13 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
         const statusCode = proxyRes.statusCode ?? 502;
         if (statusCode >= 400 && statusCode !== 429) {
           keyManager.markKeyFailed(apiKey);
-          logger.errorLog(`Upstream error ${statusCode} for key ...${apiKey.slice(-4)}`);
+          logger.errorLog(`Upstream error ${statusCode} for key ${keyManager.getKeyDescription(apiKey)}`);
         } else if (statusCode === 429) {
           keyManager.markKeyRateLimited(apiKey);
-          logger.warn(`Rate limit (429) for key ...${apiKey.slice(-4)}`);
+          logger.warn(`Rate limit (429) for key ${keyManager.getKeyDescription(apiKey)}`);
         } else {
           keyManager.markKeySuccessful(apiKey);
-          logger.keyManagement(`Successful request with key ...${apiKey.slice(-4)}`);
+          logger.keyManagement(`Successful request with key ${keyManager.getKeyDescription(apiKey)}`);
         }
 
         // 13. Send response back to client
