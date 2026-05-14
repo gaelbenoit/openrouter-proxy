@@ -1,4 +1,8 @@
 import { ProxyConfig } from './types';
+import dotenv from 'dotenv';
+
+// Load environment variables from .env file
+dotenv.config();
 
 export const defaultConfig: ProxyConfig = {
   host: process.env.PROXY_HOST ?? '127.0.0.1',
