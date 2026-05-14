@@ -33,7 +33,8 @@ export class KeyManager {
           const restoredKeyInfo: KeyInfo = {
             ...keyInfo,
             lastUsed: new Date(keyInfo.lastUsed),
-            lastFailure: keyInfo.lastFailure ? new Date(keyInfo.lastFailure) : null
+            lastFailure: keyInfo.lastFailure ? new Date(keyInfo.lastFailure) : null,
+            cooldownUntil: keyInfo.cooldownUntil ? new Date(keyInfo.cooldownUntil) : null
           };
           this.keys.set(restoredKeyInfo.key, restoredKeyInfo);
         }
@@ -53,7 +54,8 @@ export class KeyManager {
           failureCount: 0,
           lastUsed: new Date(0), // Far in the past
           lastFailure: null,
-          description: '' // Empty description by default
+          description: '', // Empty description by default
+          cooldownUntil: null // No cooldown by default
         });
       }
     }
@@ -71,7 +73,8 @@ export class KeyManager {
     const keysForSerialization = keysArray.map(keyInfo => ({
       ...keyInfo,
       lastUsed: keyInfo.lastUsed.toISOString(),
-      lastFailure: keyInfo.lastFailure ? keyInfo.lastFailure.toISOString() : null
+      lastFailure: keyInfo.lastFailure ? keyInfo.lastFailure.toISOString() : null,
+      cooldownUntil: keyInfo.cooldownUntil ? keyInfo.cooldownUntil.toISOString() : null
     }));
     try {
       fs.writeFileSync(filePath, JSON.stringify(keysForSerialization, null, 2));
@@ -111,9 +114,10 @@ export class KeyManager {
    * @returns The key string to use for the next request
    */
   getNextKey(): string | null {
-    // Filter active keys
+    // Filter active keys that are not in cooldown
+    const now = new Date();
     const activeKeys = Array.from(this.keys.entries())
-      .filter(([_, info]) => info.isActive)
+      .filter(([_, info]) => info.isActive && (!info.cooldownUntil || info.cooldownUntil <= now))
       .sort(([, a], [, b]) => a.lastUsed.getTime() - b.lastUsed.getTime());
 
     if (activeKeys.length === 0) {
@@ -162,10 +166,15 @@ export class KeyManager {
       keyInfo.failureCount += 1;
       keyInfo.lastFailure = new Date();
 
-      // Deactivate after threshold
-      if (keyInfo.failureCount >= this.config.keyFailureThreshold) {
-        keyInfo.isActive = false;
-      }
+      // Set cooldown until end of day (23:59:59.999)
+      const now = new Date();
+      const endOfDay = new Date(now);
+      endOfDay.setHours(23, 59, 59, 999);
+      keyInfo.cooldownUntil = endOfDay;
+
+      // Note: Rate limiting does NOT deactivate the key based on failure count
+      // Only non-rate-limit errors contribute to the failure threshold for deactivation
+      // The key remains active but in cooldown until the cooldown period expires
 
       this.keys.set(key, keyInfo);
       // Persist the change

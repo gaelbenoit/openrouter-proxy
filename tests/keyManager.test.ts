@@ -89,15 +89,78 @@ describe('KeyManager', () => {
     expect(keyInfo).toBeDefined();
     if (keyInfo) {
       expect(keyInfo.failureCount).toBe(3);
-      expect(keyInfo.isActive).toBe(false); // Should be deactivated after threshold
+      // Rate limiting does NOT deactivate the key - only non-rate-limit errors do
+      expect(keyInfo.isActive).toBe(true);
+      // Should have cooldown set until end of day
+      expect(keyInfo.cooldownUntil).not.toBeNull();
+      if (keyInfo.cooldownUntil) {
+        const cooldownDate = new Date(keyInfo.cooldownUntil);
+        const now = new Date();
+        // Should be set to today's date at 23:59:59.999
+        expect(cooldownDate.getDate()).toBe(now.getDate());
+        expect(cooldownDate.getMonth()).toBe(now.getMonth());
+        expect(cooldownDate.getFullYear()).toBe(now.getFullYear());
+        expect(cooldownDate.getHours()).toBe(23);
+        expect(cooldownDate.getMinutes()).toBe(59);
+        expect(cooldownDate.getSeconds()).toBe(59);
+      }
     }
 
-    // Getting next key should return a different key
+    // Getting next key should return a different key (since the first key is in cooldown)
     const nextKey = keyManager.getNextKey();
     expect(nextKey).not.toBeNull();
     if (nextKey && key) {
       expect(nextKey).not.toBe(key);
       expect(['key-1', 'key-2', 'key-3', 'key-4']).toContain(nextKey);
+    }
+  });
+
+  it('should respect cooldown period for rate limited keys', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Mark key as rate limited to trigger cooldown
+    for (let i = 0; i < 3; i++) {
+      keyManager.markKeyRateLimited(key);
+    }
+
+    // Key should not be available immediately due to cooldown
+    let nextKey = keyManager.getNextKey();
+    expect(nextKey).not.toBeNull();
+    if (nextKey && key) {
+      expect(nextKey).not.toBe(key); // Should be a different key
+    }
+
+    // Manually set the key's cooldown to past to simulate expiration
+    const keyInfo = keyManager['keys'].get(key);
+    if (keyInfo) {
+      keyInfo.cooldownUntil = new Date(Date.now() - 1000); // Set to 1 second ago
+      keyManager['keys'].set(key, keyInfo);
+    }
+
+    // Now the key should be available again
+    nextKey = keyManager.getNextKey();
+    // Note: This might still return a different key due to LRU ordering,
+    // but at least the previously rate-limited key should now be eligible
+  });
+
+  it('should deactivate key after too many non-rate-limit errors', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Mark key as failed due to other errors multiple times
+    for (let i = 0; i < 3; i++) {
+      keyManager.markKeyFailed(key);
+    }
+
+    const keyInfo = keyManager['keys'].get(key);
+    expect(keyInfo).toBeDefined();
+    if (keyInfo) {
+      expect(keyInfo.failureCount).toBe(3);
+      expect(keyInfo.isActive).toBe(false); // Should be deactivated after threshold
+      expect(keyInfo.cooldownUntil).toBeNull(); // Non-rate-limit errors don't set cooldown
     }
   });
 

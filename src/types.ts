@@ -31,4 +31,5 @@ export interface KeyInfo {
   lastUsed: Date;
   lastFailure: Date | null;
   description: string;
+  cooldownUntil: Date | null;
 }
