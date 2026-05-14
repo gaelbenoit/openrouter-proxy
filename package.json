@@ -10,7 +10,11 @@
     "test": "jest",
     "test:watch": "jest --watch"
   },
-  "keywords": ["proxy", "openrouter", "ai"],
+  "keywords": [
+    "proxy",
+    "openrouter",
+    "ai"
+  ],
   "author": "OpenRouter Proxy Contributors",
   "license": "MIT",
   "devDependencies": {
@@ -20,5 +24,8 @@
     "ts-jest": "^29.0.0",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2"
   }
 }
