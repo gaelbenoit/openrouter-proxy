@@ -6,7 +6,7 @@ describe('SSEProcessor', () => {
 
   beforeEach(() => {
     processor = new SSEProcessor({
-      claudeCodeUserAgents: ['VS Code Claude Code'],
+      claudeCodeUserAgents: ['claude-vscode'],
       signatureValue: 'dd9960d18582b741463f3ba1347853ee2ad01144306d9b1e07fd45808d81b171'
     });
   });
@@ -85,11 +85,11 @@ describe('SSEProcessor', () => {
     expect(result.body).toEqual(response.body);
   });
 
-  it('should apply Claude Code specific fixes when Claude Code request (body unchanged in this simplified impl)', () => {
+  it('should apply Claude Code specific fixes when Claude Code request', () => {
     const request: IncomingRequest = {
       method: 'POST',
       url: '/v1/chat/completions',
-      headers: { 'user-agent': 'VS Code Claude Code' },
+      headers: { 'user-agent': 'claude-vscode' },
       body: null
     };
 
@@ -100,10 +100,15 @@ describe('SSEProcessor', () => {
     };
 
     const result = processor.processSseResponse(response, request);
-    // Should have general SSE headers
+    expect(result).not.toBe(response);
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['content-type']).toBe('text/event-stream');
+    // Should not be the same object (headers copied)
     expect(result.headers['connection']).toBe('keep-alive');
     expect(result.headers['x-accel-buffering']).toBe('no');
-    // Body unchanged (since we're not implementing the full stream processing yet)
-    expect(result.body).toEqual(response.body);
+    // Body should be processed: we forward the event and add message_stop and [DONE]
+    const expectedString = 'data: test\n\nevent: message_stop\ndata: {"type":"message_stop"}\n\nevent: data\ndata: [DONE]\n\n';
+    const expectedBuffer = Buffer.from(expectedString, 'utf8');
+    expect(result.body).toEqual(expectedBuffer);
   });
 });

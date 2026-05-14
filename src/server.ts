@@ -1,15 +1,208 @@
-import { createServer } from 'http';
+import { createServer, IncomingMessage, ServerResponse } from 'http';
+import * as https from 'https';
 import { loadConfig } from './config';
+import { Router } from './router';
+import { HeaderManager } from './headerManager';
+import { KeyManager } from './keyManager';
+import { RequestBodyProcessor } from './requestBodyProcessor';
+import { SSEProcessor } from './sseProcessor';
+import { logger } from './logger';
+import { IncomingRequest } from './types';
 
 const config = loadConfig();
 
-const server = createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('OpenRouter Proxy is running!\n');
+const router = new Router({ targetBasePath: '/api/v1' });
+const headerManager = new HeaderManager(config);
+const keyManager = new KeyManager(config);
+const requestBodyProcessor = new RequestBodyProcessor();
+const sseProcessor = new SSEProcessor({
+  claudeCodeUserAgents: ['claude-vscode'],
+  signatureValue: 'dd9960d18582b741463f3ba1347853ee2ad01144306d9b1e07fd45808d81b171'
 });
 
-server.listen(config.port, config.host, () => {
-  console.log(`OpenRouter Proxy listening on ${config.host}:${config.port}`);
+const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
+  // Log incoming request
+  logger.request(`Incoming ${req.method} ${req.url}`, {
+    method: req.method,
+    url: req.url,
+    headers: req.headers
+  });
+
+  try {
+    // 1. Read request body
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyBuffer = Buffer.concat(chunks);
+
+    // 2. Create incoming request object for processing
+    // Convert headers to Record<string, string> (handle possible string[] values)
+    const headers: Record<string, string> = {};
+    Object.keys(req.headers).forEach(key => {
+      const value = req.headers[key];
+      if (Array.isArray(value)) {
+        headers[key] = value[0];
+      } else {
+        headers[key] = value ?? '';
+      }
+    });
+
+    const incomingRequest: IncomingRequest = {
+      method: req.method!, // req.method is always defined in IncomingMessage
+      url: req.url!,       // req.url is always defined in IncomingMessage
+      headers,
+      body: bodyBuffer.length > 0 ? bodyBuffer : null
+    };
+
+    // 3. Rewrite path
+    const processedRequest = router.processRequest(incomingRequest);
+    logger.proxy(`Path rewritten: ${incomingRequest.url} → ${processedRequest.url}`);
+
+    // 4. Process request body (mixed message separation, etc.)
+    const processedBody = await requestBodyProcessor.processRequestBody(processedRequest);
+    logger.proxy(`Body processing complete, shouldProcessMixedMessages: ${processedBody.shouldProcessMixedMessages}`);
+
+    // 5. Get API key
+    const apiKey = keyManager.getNextKey();
+    if (!apiKey) {
+      logger.errorLog('No active API keys available');
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'No active API keys available' }));
+      return;
+    }
+
+    // 6. Prepare outgoing headers
+    const clientIp = (req.headers['x-forwarded-for'] as string) || req.socket.remoteAddress || 'unknown';
+    const originalHost = (req.headers['host'] as string) || '';
+    const outgoingHeaders = headerManager.processRequestHeaders(
+      processedBody.headers,
+      clientIp,
+      originalHost
+    );
+    // Override Authorization with the selected key
+    outgoingHeaders['authorization'] = `Bearer ${apiKey}`;
+
+    // 7. Prepare outgoing options
+    const targetUrl = `${config.targetProtocol}://${config.targetHost}:${config.targetPort}${processedBody.url}`;
+    logger.proxy(`Forwarding to ${targetUrl}`);
+
+    // 8. Make outgoing request
+    const outgoingRequest = https.request(targetUrl, {
+      method: processedBody.method,
+      headers: outgoingHeaders
+    }, (proxyRes: IncomingMessage) => {
+      // Log outgoing response headers
+      logger.proxy(`Received response status: ${proxyRes.statusCode}`);
+
+      // 9. Process response headers (especially for SSE)
+      const isSse = (proxyRes.headers['content-type'] as string | undefined)?.includes('text/event-stream') || false;
+      const isClaudeCode = (req.headers['user-agent'] as string | undefined)?.includes('claude-vscode') || false;
+
+      // Convert proxyRes.headers to Record<string, string>
+      const proxyHeaders: Record<string, string> = {};
+      Object.keys(proxyRes.headers).forEach(key => {
+        const value = proxyRes.headers[key];
+        if (Array.isArray(value)) {
+          proxyHeaders[key] = value[0];
+        } else {
+          proxyHeaders[key] = value ?? '';
+        }
+      });
+
+      const processedResponseHeaders = headerManager.processResponseHeaders(
+        proxyHeaders,
+        isSse,
+        isClaudeCode
+      );
+
+      // 10. Prepare to collect response body (we'll buffer for non-SSE, or process stream for SSE)
+      let responseChunks: Buffer[] = [];
+      proxyRes.on('data', (chunk: Buffer) => {
+        responseChunks.push(chunk);
+      });
+
+      proxyRes.on('end', () => {
+        const responseBody = Buffer.concat(responseChunks);
+
+        // 11. If SSE, process the stream using our SSE processor
+        let finalBody = responseBody;
+        if (isSse && isClaudeCode) {
+          // Process the collected response body with our SSE processor
+          const processed = sseProcessor.processSseStream(responseBody, incomingRequest);
+          if (processed !== null && processed !== undefined) {
+            // Convert to Buffer to avoid type issues with Buffer<ArrayBufferLike> vs Buffer<ArrayBuffer>
+            finalBody = Buffer.from(processed as Buffer);
+          }
+          logger.sse('SSE response processed for Claude Code client', {
+            statusCode: proxyRes.statusCode,
+            contentType: proxyRes.headers['content-type'] as string
+          });
+        }
+
+        // 12. Mark key as successful or failed based on status code
+        const statusCode = proxyRes.statusCode ?? 502;
+        if (statusCode >= 400 && statusCode !== 429) {
+          keyManager.markKeyFailed(apiKey);
+          logger.errorLog(`Upstream error ${statusCode} for key ...${apiKey.slice(-4)}`);
+        } else if (statusCode === 429) {
+          keyManager.markKeyRateLimited(apiKey);
+          logger.warn(`Rate limit (429) for key ...${apiKey.slice(-4)}`);
+        } else {
+          keyManager.markKeySuccessful(apiKey);
+          logger.keyManagement(`Successful request with key ...${apiKey.slice(-4)}`);
+        }
+
+        // 13. Send response back to client
+        res.writeHead(statusCode, processedResponseHeaders);
+        res.end(finalBody);
+      });
+
+      proxyRes.on('error', (err: unknown) => {
+        if (err instanceof Error) {
+          logger.errorLog(`Error proxying response: ${err.message}`);
+        } else {
+          logger.errorLog(`Error proxying response: ${String(err)}`, {});
+        }
+        if (!res.writableEnded) {
+          res.writeHead(502, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Bad Gateway' }));
+        }
+      });
+    });
+
+    outgoingRequest.on('error', (err: Error) => {
+      logger.errorLog(`Error making outgoing request: ${err.message}`);
+      if (!res.writableEnded) {
+        res.writeHead(502, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Bad Gateway' }));
+      }
+    });
+
+    // 14. Write request body to outgoing request (if any)
+    if (processedBody.body) {
+      outgoingRequest.write(processedBody.body);
+    }
+    outgoingRequest.end();
+
+  } catch (err: unknown) {
+    if (err instanceof Error) {
+      logger.errorLog(`Unexpected error processing request: ${err.message}`, { stack: err.stack });
+    } else {
+      logger.errorLog(`Unexpected error processing request: ${String(err)}`, {});
+    }
+    if (!res.writableEnded) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Internal Server Error' }));
+    }
+  }
 });
+
+// Only start the server if this file is run directly (not when imported as a module)
+if (require.main === module) {
+  server.listen(config.port, config.host, () => {
+    logger.info(`OpenRouter Proxy listening on ${config.host}:${config.port}`);
+  });
+}
 
 export default server;

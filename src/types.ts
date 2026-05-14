@@ -21,7 +21,7 @@ export interface IncomingRequest {
 export interface ProxyResponse {
   statusCode: number;
   headers: Record<string, string>;
-  body: Buffer | ReadableStream;
+  body: Buffer | ReadableStream | undefined;
 }
 
 export interface KeyInfo {
