@@ -308,4 +308,50 @@ export class KeyManager {
 
     return stats;
   }
+
+  /**
+   * Retourne une représentation courte d’une clé à utiliser dans le tableau de bord.
+   * C’est exactement la même logique que getKeyDescription, mais exposée publiquement
+   * pour être réutilisée dans le dashboard.
+   */
+  public getKeyLabel(key: string): string {
+    return this.getKeyDescription(key);
+  }
+
+  /**
+   * Retourne un tableau d’objets contenant toutes les informations utiles au dashboard.
+   * Chaque objet possède les propriétés suivantes :
+   *   - label          : chaîne courte à afficher (description ou forme abrégée)
+   *   - description    : description complète (peut être vide)
+   *   - isActive       : booléen
+   *   - failureCount   : nombre d’échecs non‑rate‑limit accumulés aujourd’hui
+   *   - dayCount       : nombre de requêtes réussies aujourd’hui
+   *   - cooldownUntil  : ISO‑String ou null
+   *   - lastUsed       : ISO‑String
+   *   - lastFailure    : ISO‑String ou null
+   */
+  public getDashboardInfo(): Array<{
+    label: string;
+    description: string;
+    isActive: boolean;
+    failureCount: number;
+    dayCount: number;
+    cooldownUntil: string | null;
+    lastUsed: string;
+    lastFailure: string | null;
+  }> {
+    const now = new Date();
+    return Array.from(this.keys.values()).map(info => ({
+      label: this.getKeyLabel(info.key),
+      description: info.description,
+      isActive: info.isActive,
+      failureCount: info.failureCount,
+      dayCount: info.dayCount,
+      cooldownUntil:
+        info.cooldownUntil !== null ? info.cooldownUntil.toISOString() : null,
+      lastUsed: info.lastUsed.toISOString(),
+      lastFailure:
+        info.lastFailure !== null ? info.lastFailure.toISOString() : null,
+    }));
+  }
 }
