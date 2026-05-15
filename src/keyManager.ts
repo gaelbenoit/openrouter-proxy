@@ -110,6 +110,25 @@ export class KeyManager {
   }
 
   /**
+   * Checks if a key is currently usable (active and not in cooldown)
+   * @param key The API key to check
+   * @returns True if the key can be used for a request
+   */
+  isKeyUsable(key: string): boolean {
+    const keyInfo = this.keys.get(key);
+    if (!keyInfo) {
+      return false;
+    }
+    if (!keyInfo.isActive) {
+      return false;
+    }
+    if (keyInfo.cooldownUntil && keyInfo.cooldownUntil > new Date()) {
+      return false;
+    }
+    return true;
+  }
+
+  /**
    * Gets the next available key using least recently used strategy
    * @returns The key string to use for the next request
    */

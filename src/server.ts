@@ -20,6 +20,9 @@ const sseProcessor = new SSEProcessor({
   signatureValue: 'dd9960d18582b741463f3ba1347853ee2ad01144306d9b1e07fd45808d81b171'
 });
 
+// Track the current API key to reuse across requests until it fails
+let currentApiKey: string | null = null;
+
 const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   // Log incoming request
   logger.request(`Incoming ${req.method} ${req.url}`, {
@@ -63,13 +66,19 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     const processedBody = await requestBodyProcessor.processRequestBody(processedRequest);
     logger.proxy(`Body processing complete, shouldProcessMixedMessages: ${processedBody.shouldProcessMixedMessages}`);
 
-    // 5. Get API key
-    const apiKey = keyManager.getNextKey();
-    if (!apiKey) {
-      logger.errorLog('No active API keys available');
-      res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'No active API keys available' }));
-      return;
+    // 5. Get API key - reuse current key if usable, otherwise get a new one
+    let apiKey: string | null = null;
+    if (currentApiKey !== null && keyManager.isKeyUsable(currentApiKey)) {
+      apiKey = currentApiKey;
+    } else {
+      apiKey = keyManager.getNextKey();
+      if (!apiKey) {
+        logger.errorLog('No active API keys available');
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'No active API keys available' }));
+        return;
+      }
+      currentApiKey = apiKey;
     }
 
     // 6. Prepare outgoing headers
@@ -145,12 +154,16 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
         if (statusCode >= 400 && statusCode !== 429) {
           keyManager.markKeyFailed(apiKey);
           logger.errorLog(`Upstream error ${statusCode} for key ${keyManager.getKeyDescription(apiKey)}`);
+          // Keep currentApiKey; it will be deactivated if failure count exceeds threshold
         } else if (statusCode === 429) {
           keyManager.markKeyRateLimited(apiKey);
           logger.warn(`Rate limit (429) for key ${keyManager.getKeyDescription(apiKey)}`);
+          // Rotate to a new key on next request
+          currentApiKey = null;
         } else {
           keyManager.markKeySuccessful(apiKey);
           logger.keyManagement(`Successful request with key ${keyManager.getKeyDescription(apiKey)}`);
+          // Keep currentApiKey for next request
         }
 
         // 13. Send response back to client

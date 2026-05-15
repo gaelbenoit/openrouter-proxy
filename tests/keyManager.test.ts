@@ -161,7 +161,48 @@ describe('KeyManager', () => {
       expect(keyInfo.failureCount).toBe(3);
       expect(keyInfo.isActive).toBe(false); // Should be deactivated after threshold
       expect(keyInfo.cooldownUntil).toBeNull(); // Non-rate-limit errors don't set cooldown
+      expect(keyManager.isKeyUsable(key)).toBe(false); // Should not be usable
     }
+  });
+
+  it('should correctly report key usability', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Fresh key should be usable
+    expect(keyManager.isKeyUsable(key)).toBe(true);
+
+    // After marking as rate limited, it should not be usable due to cooldown
+    keyManager.markKeyRateLimited(key);
+    expect(keyManager.isKeyUsable(key)).toBe(false);
+
+    // After cooldown expires (by setting cooldownUntil to past), it should be usable again
+    const keyInfo = keyManager['keys'].get(key);
+    if (keyInfo) {
+      keyInfo.cooldownUntil = new Date(Date.now() - 1000); // 1 second ago
+      keyManager['keys'].set(key, keyInfo);
+      expect(keyManager.isKeyUsable(key)).toBe(true);
+    }
+
+    // If key is deactivated due to errors, it should not be usable
+    // First reset the key
+    keyManager['keys'].set(key, {
+      key,
+      isActive: true,
+      failureCount: 0,
+      lastUsed: new Date(0),
+      lastFailure: null,
+      description: '',
+      cooldownUntil: null
+    });
+    expect(keyManager.isKeyUsable(key)).toBe(true);
+
+    // Now deactivate it
+    for (let i = 0; i < 3; i++) {
+      keyManager.markKeyFailed(key);
+    }
+    expect(keyManager.isKeyUsable(key)).toBe(false);
   });
 
   it('should handle other errors correctly', () => {
