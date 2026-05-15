@@ -153,7 +153,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 
         // 12. Mark key as successful or failed based on status code
         const statusCode = proxyRes.statusCode ?? 502;
-        if (statusCode >= 400 && statusCode !== 429) {
+        if (statusCode >= 400 && statusCode !== 429 && statusCode !== 400) {
           keyManager.markKeyFailed(apiKey);
           logger.errorLog(`Upstream error ${statusCode} for key ${keyManager.getKeyDescription(apiKey)}`);
           // Keep currentApiKey; it will be deactivated if failure count exceeds threshold
@@ -162,6 +162,9 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
           logger.warn(`Rate limit (429) for key ${keyManager.getKeyDescription(apiKey)}`);
           // Rotate to a new key on next request
           currentApiKey = null;
+        } else if (statusCode === 400) {
+          // OpenRouter bug: 400 errors should not affect key status
+          logger.errorLog(`Upstream error ${statusCode} (OpenRouter bug) for key ${keyManager.getKeyDescription(apiKey)}`);
         } else {
           keyManager.markKeySuccessful(apiKey);
           logger.keyManagement(`Successful request with key ${keyManager.getKeyDescription(apiKey)}`);

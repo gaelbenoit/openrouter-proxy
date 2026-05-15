@@ -14,7 +14,7 @@ export const defaultConfig: ProxyConfig = {
   httpReferer: process.env.HTTP_REFERER ?? 'https://github.com/openrouter',
   openRouterTitle: process.env.OPENROUTER_TITLE ?? 'OpenRouter Proxy',
   verboseLogging: process.env.VERBOSE_LOGGING === 'true',
-  keyFailureThreshold: parseInt(process.env.KEY_FAILURE_THRESHOLD ?? '3', 10)
+  keyFailureThreshold: parseInt(process.env.KEY_FAILURE_THRESHOLD ?? '10', 10)
 };
 
 export function loadConfig(): ProxyConfig {

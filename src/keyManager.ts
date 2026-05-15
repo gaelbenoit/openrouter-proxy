@@ -172,20 +172,41 @@ export class KeyManager {
   }
 
   /**
+   * Checks if two dates are on the same day (ignoring time)
+   * @param date1 First date
+   * @param date2 Second date
+   * @returns True if both dates are on the same day
+   */
+  private isSameDay(date1: Date, date2: Date): boolean {
+    return date1.getFullYear() === date2.getFullYear() &&
+           date1.getMonth() === date2.getMonth() &&
+           date1.getDate() === date2.getDate();
+  }
+
+  /**
+   * Resets daily counters if the key's last used date is not today
+   * @param keyInfo The key info to potentially reset
+   */
+  private resetDailyCountersIfNewDay(keyInfo: KeyInfo): void {
+    if (!this.isSameDay(keyInfo.lastUsed, new Date())) {
+      keyInfo.dayCount = 0;
+      keyInfo.failureCount = 0;
+      keyInfo.isActive = true;
+      // Note: We do not reset cooldownUntil here because it should have expired
+      // if it was set for a previous day. If it's still in the future, that would
+      // mean a system clock issue, but we keep it as is.
+    }
+  }
+
+  /**
    * Marks a key as successful after a request
    * @param key The key that was used
    */
   markKeySuccessful(key: string): void {
     const keyInfo = this.keys.get(key);
     if (keyInfo) {
-      // Reset dayCount if lastUsed is not today (new day)
-      const todayStart = new Date();
-      todayStart.setHours(0,0,0,0);
-      const lastUsedStart = new Date(keyInfo.lastUsed);
-      lastUsedStart.setHours(0,0,0,0);
-      if (lastUsedStart.getTime() !== todayStart.getTime()) {
-        keyInfo.dayCount = 0;
-      }
+      // Reset daily counters if we're on a new day
+      this.resetDailyCountersIfNewDay(keyInfo);
       // Increment daily usage counter
       keyInfo.dayCount += 1;
       // Update last used time
@@ -232,6 +253,8 @@ export class KeyManager {
   markKeyFailed(key: string): void {
     const keyInfo = this.keys.get(key);
     if (keyInfo) {
+      // Reset daily counters if we're on a new day
+      this.resetDailyCountersIfNewDay(keyInfo);
       // On other error conditions: tracks failures and may deactivate after threshold
       keyInfo.failureCount += 1;
       keyInfo.lastFailure = new Date();
