@@ -194,7 +194,8 @@ describe('KeyManager', () => {
       lastUsed: new Date(0),
       lastFailure: null,
       description: '',
-      cooldownUntil: null
+      cooldownUntil: null,
+      dayCount: 0
     });
     expect(keyManager.isKeyUsable(key)).toBe(true);
 
@@ -246,6 +247,7 @@ describe('KeyManager', () => {
       if (keyInfo) {
         expect(keyInfo.isActive).toBe(true);
         expect(keyInfo.failureCount).toBe(0); // Should be reset
+        expect(keyInfo.dayCount).toBe(0); // Should be reset on reactivation
       }
     }
   });
@@ -260,5 +262,82 @@ describe('KeyManager', () => {
 
     const key = keyManager.getNextKey();
     expect(key).toBeNull();
+  });
+
+  it('should track daily usage count correctly', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Initial state: dayCount should be 0
+    let keyInfo = keyManager['keys'].get(key);
+    expect(keyInfo).toBeDefined();
+    if (keyInfo) {
+      expect(keyInfo.dayCount).toBe(0);
+    }
+
+    // After first successful request, dayCount should be 1
+    keyManager.markKeySuccessful(key);
+    keyInfo = keyManager['keys'].get(key);
+    expect(keyInfo).toBeDefined();
+    if (keyInfo) {
+      expect(keyInfo.dayCount).toBe(1);
+    }
+
+    // After second successful request, dayCount should be 2
+    keyManager.markKeySuccessful(key);
+    keyInfo = keyManager['keys'].get(key);
+    expect(keyInfo).toBeDefined();
+    if (keyInfo) {
+      expect(keyInfo.dayCount).toBe(2);
+    }
+  });
+
+  it('should reset dayCount when key is used on a new day', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Simulate usage yesterday
+    const keyInfo = keyManager['keys'].get(key);
+    if (keyInfo) {
+      keyInfo.dayCount = 5;
+      // Set lastUsed to yesterday
+      const yesterday = new Date();
+      yesterday.setDate(yesterday.getDate() - 1);
+      keyInfo.lastUsed = yesterday;
+      keyManager['keys'].set(key, keyInfo);
+    }
+
+    // After successful request today, dayCount should reset to 1 (not 6)
+    keyManager.markKeySuccessful(key);
+    const updatedKeyInfo = keyManager['keys'].get(key);
+    expect(updatedKeyInfo).toBeDefined();
+    if (updatedKeyInfo) {
+      expect(updatedKeyInfo.dayCount).toBe(1); // Reset to 1, not 6
+    }
+  });
+
+  it('should preserve dayCount when key is used multiple times same day', () => {
+    const key = keyManager.getNextKey();
+    expect(key).not.toBeNull();
+    if (!key) return; // Skip if no key
+
+    // Simulate usage earlier today
+    const keyInfo = keyManager['keys'].get(key);
+    if (keyInfo) {
+      keyInfo.dayCount = 3;
+      // Keep lastUsed as today (but earlier)
+      keyInfo.lastUsed = new Date(Date.now() - 3600000); // 1 hour ago
+      keyManager['keys'].set(key, keyInfo);
+    }
+
+    // After successful request today, dayCount should increment to 4
+    keyManager.markKeySuccessful(key);
+    const updatedKeyInfo = keyManager['keys'].get(key);
+    expect(updatedKeyInfo).toBeDefined();
+    if (updatedKeyInfo) {
+      expect(updatedKeyInfo.dayCount).toBe(4); // Incremented from 3
+    }
   });
 });

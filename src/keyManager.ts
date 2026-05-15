@@ -34,7 +34,8 @@ export class KeyManager {
             ...keyInfo,
             lastUsed: new Date(keyInfo.lastUsed),
             lastFailure: keyInfo.lastFailure ? new Date(keyInfo.lastFailure) : null,
-            cooldownUntil: keyInfo.cooldownUntil ? new Date(keyInfo.cooldownUntil) : null
+            cooldownUntil: keyInfo.cooldownUntil ? new Date(keyInfo.cooldownUntil) : null,
+            dayCount: keyInfo.dayCount ?? 0
           };
           this.keys.set(restoredKeyInfo.key, restoredKeyInfo);
         }
@@ -55,7 +56,8 @@ export class KeyManager {
           lastUsed: new Date(0), // Far in the past
           lastFailure: null,
           description: '', // Empty description by default
-          cooldownUntil: null // No cooldown by default
+          cooldownUntil: null, // No cooldown by default
+          dayCount: 0 // Initialize daily usage counter
         });
       }
     }
@@ -74,7 +76,8 @@ export class KeyManager {
       ...keyInfo,
       lastUsed: keyInfo.lastUsed.toISOString(),
       lastFailure: keyInfo.lastFailure ? keyInfo.lastFailure.toISOString() : null,
-      cooldownUntil: keyInfo.cooldownUntil ? keyInfo.cooldownUntil.toISOString() : null
+      cooldownUntil: keyInfo.cooldownUntil ? keyInfo.cooldownUntil.toISOString() : null,
+      dayCount: keyInfo.dayCount
     }));
     try {
       fs.writeFileSync(filePath, JSON.stringify(keysForSerialization, null, 2));
@@ -129,6 +132,16 @@ export class KeyManager {
   }
 
   /**
+   * Gets the daily usage count for a key
+   * @param key The API key
+   * @returns The number of times the key has been used today, or 0 if key not found
+   */
+  getDayCount(key: string): number {
+    const keyInfo = this.keys.get(key);
+    return keyInfo ? keyInfo.dayCount : 0;
+  }
+
+  /**
    * Gets the next available key using least recently used strategy
    * @returns The key string to use for the next request
    */
@@ -165,7 +178,17 @@ export class KeyManager {
   markKeySuccessful(key: string): void {
     const keyInfo = this.keys.get(key);
     if (keyInfo) {
-      // On successful requests: marks key as used recently
+      // Reset dayCount if lastUsed is not today (new day)
+      const todayStart = new Date();
+      todayStart.setHours(0,0,0,0);
+      const lastUsedStart = new Date(keyInfo.lastUsed);
+      lastUsedStart.setHours(0,0,0,0);
+      if (lastUsedStart.getTime() !== todayStart.getTime()) {
+        keyInfo.dayCount = 0;
+      }
+      // Increment daily usage counter
+      keyInfo.dayCount += 1;
+      // Update last used time
       keyInfo.lastUsed = new Date();
       this.keys.set(key, keyInfo);
       // Persist the change

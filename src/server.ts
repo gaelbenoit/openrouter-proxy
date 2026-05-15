@@ -22,6 +22,8 @@ const sseProcessor = new SSEProcessor({
 
 // Track the current API key to reuse across requests until it fails
 let currentApiKey: string | null = null;
+// Track daily usage stats for logging/monitoring
+let dailyStats: { [key: string]: number } = {};
 
 const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
   // Log incoming request
