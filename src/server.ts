@@ -177,19 +177,26 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 
         // 12. Mark key as successful or failed based on status code
         const statusCode = proxyRes.statusCode ?? 502;
-        if (statusCode >= 400 && statusCode !== 429 && statusCode !== 400) {
-          keyManager.markKeyFailed(apiKey);
-          logger.errorLog(`Upstream error ${statusCode} for key ${keyManager.getKeyDescription(apiKey)}`);
-          // Keep currentApiKey; it will be deactivated if failure count exceeds threshold
-        } else if (statusCode === 429) {
-          keyManager.markKeyRateLimited(apiKey);
-          logger.warn(`Rate limit (429) for key ${keyManager.getKeyDescription(apiKey)}`);
-          // Rotate to a new key on next request
-          currentApiKey = null;
-        } else if (statusCode === 400) {
-          // OpenRouter bug: 400 errors should not affect key status
-          logger.errorLog(`Upstream error ${statusCode} (OpenRouter bug) for key ${keyManager.getKeyDescription(apiKey)}`);
+        if (statusCode >= 400) {
+          // Gérer les différents types d'erreurs HTTP
+          if (statusCode === 429) {
+            // Rate limit - rotation immédiate de la clé
+            keyManager.markKeyRateLimited(apiKey);
+            logger.warn(`Rate limit (429) for key ${keyManager.getKeyDescription(apiKey)}`);
+            // Rotate to a new key on next request
+            currentApiKey = null;
+          } else if (statusCode === 400) {
+            // OpenRouter bug: 400 errors should not affect key status
+            // Ne pas incrémenter failureCount pour ce bug connu
+            logger.errorLog(`Upstream error ${statusCode} (OpenRouter bug) for key ${keyManager.getKeyDescription(apiKey)}`);
+          } else {
+            // Toutes les autres erreurs client/serveur (4xx sauf 400 et 429, et 5xx)
+            keyManager.markKeyFailed(apiKey);
+            logger.errorLog(`Upstream error ${statusCode} for key ${keyManager.getKeyDescription(apiKey)}`);
+            // Keep currentApiKey; it will be deactivated if failure count exceeds threshold
+          }
         } else {
+          // Réponse réussie (statut < 400)
           keyManager.markKeySuccessful(apiKey);
           logger.keyManagement(`Successful request with key ${keyManager.getKeyDescription(apiKey)}`);
           // Keep currentApiKey for next request
