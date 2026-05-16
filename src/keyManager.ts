@@ -286,6 +286,19 @@ export class KeyManager {
   }
 
   /**
+   * Reset daily counters for all keys that haven't been used today
+   * This clears dayCount, failureCount and cooldown for inactive keys
+   */
+  resetAllDailyCounters(): void {
+    const now = new Date();
+    for (const [key, keyInfo] of this.keys.entries()) {
+      this.resetDailyCountersIfNewDay(keyInfo);
+    }
+    // Persist the changes
+    this.saveKeysToFile();
+  }
+
+  /**
    * Gets statistics about key usage for monitoring
    * @returns Object with key statistics
    */

@@ -84,3 +84,23 @@ async function refresh() {
 // Rafraîchissement initial puis toutes les 5 secondes
 refresh();
 setInterval(refresh, 5000);
+
+// Gestion du bouton de réinitialisation
+document.getElementById('resetButton').addEventListener('click', async () => {
+  try {
+    const resp = await fetch('/dashboard/reset', {
+      method: 'POST'
+    });
+    const result = await resp.json();
+    if (result.success) {
+      // Rafraîchir l'affichage après la réinitialisation
+      refresh();
+      alert('Compteurs quotidiens réinitialisés avec succès');
+    } else {
+      alert('Erreur lors de la réinitialisation : ' + result.message);
+    }
+  } catch (e) {
+    console.error('Erreur lors de la réinitialisation des compteurs :', e);
+    alert('Erreur lors de la réinitialisation des compteurs');
+  }
+});

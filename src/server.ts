@@ -45,6 +45,9 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
       if (req.url === '/stats' && req.method === 'GET') {
         return serveDashboardStats(res, keyManager);
       }
+      if (req.url === '/dashboard/reset' && req.method === 'POST') {
+        return resetDashboardCounters(res, keyManager);
+      }
       // Si le chemin correspond à un préfixe connu mais pas à une route implémentée
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       return res.end('Not found');
@@ -299,6 +302,15 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     const info = keyMgr.getDashboardInfo();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(info));
+  }
+
+  /**
+   * Handle POST request to reset daily counters for all keys
+   */
+  function resetDashboardCounters(res: ServerResponse, keyMgr: KeyManager): void {
+    keyMgr.resetAllDailyCounters();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ success: true, message: 'Daily counters reset successfully' }));
   }
 
 // Only start the server if this file is run directly (not when imported as a module)
