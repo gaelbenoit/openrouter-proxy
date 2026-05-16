@@ -1,5 +1,6 @@
   import { createServer, IncomingMessage, ServerResponse } from 'http';
   import * as https from 'https';
+  import * as fs from 'fs';
   import { loadConfig } from './config';
   import { Router } from './router';
   import { HeaderManager } from './headerManager';
@@ -236,6 +237,19 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
   }
 });
 
+  function serveStaticFile(res: ServerResponse, filePath: string, contentType: string): void {
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(500, { 'Content-Type': 'text/plain' });
+        res.end('Internal Server Error');
+        return;
+      }
+
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(data);
+    });
+  }
+
   /**
    * Retourne vrai si la requête doit être traitée comme une demande de dashboard
    * (HTML, JS ou JSON) plutôt que comme une requête à proxyer vers OpenRouter.
@@ -266,37 +280,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
    * Renvoie la petite page HTML qui charge le script du dashboard.
    */
   function serveDashboardHtml(res: ServerResponse): void {
-    const html = `
-  <!DOCTYPE html>
-  <html lang="fr">
-  <head>
-    <meta charset="UTF-8">
-    <title>OpenRouter Proxy – Dashboard</title>
-    <style>
-      body {font-family: Arial, sans-serif; margin: 20px; background:#f9f9f9;}
-      h1 {color:#333;}
-      .key-bar {margin: 10px 0;}
-      .label {font-weight:bold; display:inline-block; width:250px;}
-      .bar {background:#e0e0e0; height:20px; width:300px; display:inline-block; position:relative;}
-      .fill {height:100%; background:green; transition:background .2s;}
-      .tooltip {position:absolute; background:#333; color:#fff; padding:5px;
-                border-radius:3px; white-space:nowrap; font-size:12px;
-                bottom:120%; left:50%; transform:translateX(-50%);
-                opacity:0; pointer-events:none; transition:opacity .2s;}
-      .bar:hover .tooltip {opacity:1;}
-    </style>
-  </head>
-  <body>
-    <h1>Dashboard – Utilisation des clés API</h1>
-    <div id="keys"></div>
-
-    <script src="/dashboard.js"></script>
-  </body>
-  </html>
-    `.trim();
-
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(html);
+    serveStaticFile(res, './public/dashboard.html', 'text/html; charset=utf-8');
   }
 
   /**
@@ -304,69 +288,7 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
    * et met à jour l’affichage.
    */
   function serveDashboardJs(res: ServerResponse): void {
-    const js =
-      "// Fonction utilitaire pour convertir une chaîne ISO en date locale lisible\n" +
-      "function fmtDate(iso) {\n" +
-      "  if (!iso) return '―';\n" +
-      "  const d = new Date(iso);\n" +
-      "  return d.toLocaleString();\n" +
-      "}\n\n" +
-      "// Détermine la couleur de la barre en fonction du statut\n" +
-      "function getBarColor(info) {\n" +
-      "  if (!info.isActive) return '#bbb';               // gris – inactif\n" +
-      "  if (info.cooldownUntil) return '#4a90e2';        // bleu – en cooldown\n" +
-      "  // Dégradation du vert → jaune → rouge en fonction de dayCount / 50\n" +
-      "  const ratio = Math.min(info.dayCount / 50, 1);   // 0 → 1\n" +
-      "  if (ratio < 0.5) {\n" +
-      "    // vert → jaune\n" +
-      "    const r = Math.round(128 + 127 * (ratio * 2)); // 128 à 255 (vert à jaune)\n" +
-      "    const g = 255;\n" +
-      "    return 'rgb(' + r + ',' + g + ',0)';\n" +
-      "  } else {\n" +
-      "    // jaune → rouge\n" +
-      "    const r = 255;\n" +
-      "    const g = Math.round(255 * (2 - ratio * 2));  // 255 à 0\n" +
-      "    return 'rgb(' + r + ',' + g + ',0)';\n" +
-      "  }\n" +
-      "}\n\n" +
-      "// Met à jour le tableau avec les données reçues\n" +
-      "async function refresh() {\n" +
-      "  try {\n" +
-      "    const resp = await fetch('/stats');\n" +
-      "    const data = await resp.json();\n" +
-      "    const container = document.getElementById('keys');\n" +
-      "    container.innerHTML = ''; // nettoyer\n\n" +
-      "    data.forEach(info => {\n" +
-      "      const div = document.createElement('div');\n" +
-      "      div.className = 'key-bar';\n\n" +
-      "      const label = document.createElement('div');\n" +
-      "      label.className = 'label';\n" +
-      "      label.textContent = info.label;\n" +
-      "      div.appendChild(label);\n\n" +
-      "      const bar = document.createElement('div');\n" +
-      "      bar.className = 'bar';\n" +
-      "      const fill = document.createElement('div');\n" +
-      "      fill.className = 'fill';\n" +
-      "      fill.style.width = (info.dayCount / 50) * 100 + '%';\n" +
-      "      fill.style.background = getBarColor(info);\n\n" +
-      "      bar.appendChild(fill);\n\n" +
-      "      const tooltip = document.createElement('div');\n" +
-      "      tooltip.className = 'tooltip';\n" +
-      "      tooltip.innerHTML = '<strong>Clé :</strong>' + info.label + '<br><strong>Description :</strong>' + (info.description || '―') + '<br><strong>Actif :</strong>' + (info.isActive ? 'Oui' : 'Non') + '<br><strong>Utilisation aujourd\\'hui :</strong>' + info.dayCount + '<br><strong>Échecs aujourd\\'hui :</strong>' + info.failureCount + '<br><strong>Cooldown jusqu\\'à :</strong>' + fmtDate(info.cooldownUntil) + '<br><strong>Dernière utilisation :</strong>' + fmtDate(info.lastUsed) + '<br><strong>Dernier échec :</strong>' + fmtDate(info.lastFailure);\n\n" +
-      "      bar.appendChild(tooltip);\n\n" +
-      "      div.appendChild(bar);\n" +
-      "      container.appendChild(div);\n" +
-      "    });\n" +
-      "  } catch (e) {\n" +
-      "    console.error('Erreur lors du rafraîchissement du dashboard :', e);\n" +
-      "  }\n" +
-      "}\n\n" +
-      "// Rafraîchissement initial puis toutes les 5 secondes\n" +
-      "refresh();\n" +
-      "setInterval(refresh, 5000);";
-
-    res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8' });
-    res.end(js);
+    serveStaticFile(res, './public/dashboard.js', 'application/javascript; charset=utf-8');
   }
 
   /**

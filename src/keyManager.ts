@@ -192,9 +192,9 @@ export class KeyManager {
       keyInfo.dayCount = 0;
       keyInfo.failureCount = 0;
       keyInfo.isActive = true;
-      // Note: We do not reset cooldownUntil here because it should have expired
-      // if it was set for a previous day. If it's still in the future, that would
-      // mean a system clock issue, but we keep it as is.
+    }
+    if ((keyInfo.cooldownUntil == null) || (!this.isSameDay(keyInfo.cooldownUntil, new Date()))) {
+      keyInfo.cooldownUntil = null;
     }
   }
 
