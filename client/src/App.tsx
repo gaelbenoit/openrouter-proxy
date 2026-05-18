@@ -77,38 +77,36 @@ const KeyCard: React.FC<{ info: KeyInfoWithLatest }> = ({ info }) => {
 
 const App: React.FC = () => {
   const [keys, setKeys] = useState<KeyInfo[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchKeys = async () => {
       try {
-        setLoading(true);
         const response = await fetch('/stats');
         if (!response.ok) {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data: KeyInfo[] = await response.json();
-        
+
         // Trouver l'index de la dernière clé utilisée
         const latestKeyIndex = data.reduce((maxIndex, info, currentIndex) => {
           const currentTime = new Date(info.lastUsed).getTime();
           const maxTime = new Date((data[maxIndex] && data[maxIndex].lastUsed) || '').getTime();
           return currentTime > maxTime ? currentIndex : maxIndex;
         }, 0);
-        
+
         setKeys(data.map((info, index) => ({ ...info, isLatest: index === latestKeyIndex }) as KeyInfoWithLatest));
+        setError(null); // Clear any previous error
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Erreur inconnue');
-      } finally {
-        setLoading(false);
       }
     };
 
+    // Fetch immediately, then every 5 seconds
     fetchKeys();
     const interval = setInterval(fetchKeys, 5000);
     return () => clearInterval(interval);
-  }, []);
+  }, []); // Empty deps array means this runs once on mount
 
   const handleReset = async () => {
     try {
@@ -125,7 +123,6 @@ const App: React.FC = () => {
     }
   };
 
-  if (loading) return <div className="container">Chargement...</div>;
   if (error) return <div className="container error">Erreur: {error}</div>;
 
   return (
