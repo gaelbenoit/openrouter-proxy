@@ -26,6 +26,10 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
-    "dotenv": "^17.4.2"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "dotenv": "^17.4.2",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
   }
 }

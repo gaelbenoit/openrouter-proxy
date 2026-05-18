@@ -36,18 +36,34 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
 
    // ------------------- 1️⃣  Gestion du dashboard -------------------
     if (isDashboardRequest(req)) {
-      if (req.url === '/' && req.method === 'GET') {
-        return serveDashboardHtml(res);
-      }
-      if (req.url === '/dashboard.js' && req.method === 'GET') {
-        return serveDashboardJs(res);
-      }
+      // Routes API spécifiques
       if (req.url === '/stats' && req.method === 'GET') {
         return serveDashboardStats(res, keyManager);
       }
       if (req.url === '/dashboard/reset' && req.method === 'POST') {
         return resetDashboardCounters(res, keyManager);
       }
+
+      // Servir l'application React pour toutes les autres routes du dashboard
+      // Cela permet le routing côté client de React Router
+      if (req.method === 'GET') {
+        const url = req.url || '/';
+
+        // Pour la racine, servir index.html
+        if (url === '/' || url === '') {
+          return serveDashboardHtml(res);
+        }
+
+        // Pour les assets statiques (JS, CSS, images, etc.)
+        if (url.startsWith('/assets/')) {
+          const assetPath = url.substring(1); // Enlever le slash initial
+          return serveDashboardAsset(res, assetPath);
+        }
+
+        // Pour toutes les autres routes, servir index.html (SPA routing)
+        return serveDashboardHtml(res);
+      }
+
       // Si le chemin correspond à un préfixe connu mais pas à une route implémentée
       res.writeHead(404, { 'Content-Type': 'text/plain' });
       return res.end('Not found');
@@ -287,18 +303,28 @@ const server = createServer(async (req: IncomingMessage, res: ServerResponse) =>
     );
   }
   /**
-   * Renvoie la petite page HTML qui charge le script du dashboard.
+   * Renvoie la page HTML du dashboard React.
    */
   function serveDashboardHtml(res: ServerResponse): void {
-    serveStaticFile(res, './public/dashboard.html', 'text/html; charset=utf-8');
+    serveStaticFile(res, './client-dist/index.html', 'text/html; charset=utf-8');
   }
 
   /**
-   * Renvoie le code JavaScript qui réalise le polling périodique de /stats
-   * et met à jour l’affichage.
+   * Renvoie les assets statiques du dashboard React (JS, CSS, etc.).
    */
-  function serveDashboardJs(res: ServerResponse): void {
-    serveStaticFile(res, './public/dashboard.js', 'application/javascript; charset=utf-8');
+  function serveDashboardAsset(res: ServerResponse, assetPath: string): void {
+    const fullPath = `./client-dist/${assetPath}`;
+    // Déterminer le type de contenu basé sur l'extension
+    let contentType = 'application/octet-stream';
+    if (assetPath.endsWith('.js')) contentType = 'application/javascript';
+    else if (assetPath.endsWith('.css')) contentType = 'text/css';
+    else if (assetPath.endsWith('.json')) contentType = 'application/json';
+    else if (assetPath.endsWith('.png')) contentType = 'image/png';
+    else if (assetPath.endsWith('.jpg') || assetPath.endsWith('.jpeg')) contentType = 'image/jpeg';
+    else if (assetPath.endsWith('.svg')) contentType = 'image/svg+xml';
+    else if (assetPath.endsWith('.ico')) contentType = 'image/x-icon';
+
+    serveStaticFile(res, fullPath, contentType);
   }
 
   /**
